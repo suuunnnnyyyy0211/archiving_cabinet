@@ -31,13 +31,11 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      // AuthGate가 자동 로그인 및 인증 상태를 실시간 감지합니다.
       home: const AuthGate(),
     );
   }
 }
 
-/// 🔑 핵심: 자동 로그인 & 인증 감지 관문(Gate)
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -46,18 +44,16 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // 1. 이미 로그인된 토큰이 존재하는 경우 -> 메인 앱으로 자동 진입 (자동 로그인!)
         if (snapshot.hasData) {
           return const MainAppShell();
         }
-        // 2. 로그아웃 상태이거나 처음 접속한 경우 -> 로그인/회원가입 화면
         return const AuthScreen();
       },
     );
   }
 }
 
-/// 🔐 로그인 / 회원가입 화면
+/// 🔐 닉네임 / 비밀번호 간편 로그인 화면
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -66,32 +62,58 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool isSignUp = false; // 로그인 모드 vs 회원가입 모드 전환
+  bool isSignUp = false;
   bool isLoading = false;
 
+  // 닉네임/아이디를 안전한 내부 이메일 포맷으로 변환하는 함수
+  String _toInternalEmail(String username) {
+    final cleanUsername = Uri.encodeComponent(username.trim().replaceAll(' ', ''));
+    return '$cleanUsername@tastecabinet.internal';
+  }
+
   Future<void> _submit() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('닉네임과 비밀번호를 모두 입력해 주세요.')),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
     try {
+      final internalEmail = _toInternalEmail(username);
+
       if (isSignUp) {
-        // 회원가입
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        // 회원가입 및 닉네임 저장
+        final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: internalEmail,
+          password: password,
         );
+        await credential.user?.updateDisplayName(username);
       } else {
         // 로그인
         await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          email: internalEmail,
+          password: password,
         );
       }
     } on FirebaseAuthException catch (e) {
+      String message = '인증에 실패했습니다.';
+      if (e.code == 'wrong-password' || e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        message = '닉네임 또는 비밀번호가 일치하지 않습니다.';
+      } else if (e.code == 'email-already-in-use') {
+        message = '이미 사용 중인 닉네임입니다.';
+      } else if (e.code == 'weak-password') {
+        message = '비밀번호는 6자리 이상이어야 합니다.';
+      }
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? '인증 실패')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -103,37 +125,60 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       body: Center(
         child: Container(
-          maxWidth: 400,
+          maxWidth: 380,
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const Icon(Icons.cabinet, size: 64, color: Colors.deepPurple),
+              const SizedBox(height: 16),
               Text(
-                isSignUp ? '취향 보관함 회원가입' : '취향 보관함 로그인',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                isSignUp ? '취향 보관함 계정 만들기' : '취향 보관함 로그인',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isSignUp ? '사용하실 닉네임과 비밀번호만 설정해 주세요.' : '닉네임과 비밀번호로 로그인하세요.',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 32),
               TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: '이메일 주소', border: OutlineInputBorder()),
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: '닉네임 (또는 아이디)',
+                  prefixIcon: Icon(Icons.person),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: '비밀번호', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: '비밀번호',
+                  prefixIcon: Icon(Icons.lock),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 24),
               isLoading
                   ? const CircularProgressIndicator()
                   : ElevatedButton(
                       onPressed: _submit,
-                      style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-                      child: Text(isSignUp ? '회원가입하기' : '로그인하기'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text(isSignUp ? '가입하기' : '로그인하기', style: const TextStyle(fontSize: 16)),
                     ),
+              const SizedBox(height: 12),
               TextButton(
                 onPressed: () => setState(() => isSignUp = !isSignUp),
-                child: Text(isSignUp ? '이미 계정이 있으신가요? 로그인' : '계정이 없으신가요? 회원가입'),
+                child: Text(
+                  isSignUp ? '이미 계정이 있으신가요? 로그인' : '처음이신가요? 3초 만에 가입하기',
+                  style: const TextStyle(color: Colors.deepPurple),
+                ),
               ),
             ],
           ),
@@ -143,13 +188,14 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-/// 🏠 메인 앱 화면 (로그인 완료된 사용자만 접근 가능)
+/// 🏠 로그인 성공 시 들어오는 메인 화면
 class MainAppShell extends StatelessWidget {
   const MainAppShell({super.key});
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final nickname = user?.displayName ?? '멤버';
 
     return Scaffold(
       appBar: AppBar(
@@ -157,7 +203,7 @@ class MainAppShell extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut(), // 로그아웃 클릭 시 즉시 AuthScreen으로 이동
+            onPressed: () => FirebaseAuth.instance.signOut(),
             tooltip: '로그아웃',
           )
         ],
@@ -166,9 +212,9 @@ class MainAppShell extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('${user?.email}님, 환영합니다!', style: const TextStyle(fontSize: 20)),
-            const SizedBox(height: 16),
-            const Text('이제 나만의 공간에 취향을 기록해 보세요.'),
+            Text('✨ $nickname 님의 취향 보관함', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            const Text('자동 로그인 적용 완료! 다음 접속 시 바로 이 화면으로 이동합니다.'),
           ],
         ),
       ),

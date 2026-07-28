@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 Firestore 패키지 추가
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ⚠️ 1. 본인의 Firebase 웹 설정 키값으로 교체해주세요!
   await Firebase.initializeApp(
     options: const FirebaseOptions(
       apiKey: "AIzaSyD4lz8x03zRblRUYtHwO7nBUlVCmeCtEbE",
@@ -29,7 +29,10 @@ class MyApp extends StatelessWidget {
       title: 'Taste Cabinet',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2C2C2C),
+          primary: const Color(0xFFFF5252),
+        ),
         useMaterial3: true,
       ),
       home: const AuthGate(),
@@ -46,9 +49,7 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          return const MainAppShell();
-        }
+        if (snapshot.hasData) return const MainAppShell();
         return const AuthScreen();
       },
     );
@@ -69,6 +70,13 @@ class _AuthScreenState extends State<AuthScreen> {
   bool isSignUp = false;
   bool isLoading = false;
 
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   String _toInternalEmail(String username) {
     final cleanUsername = Uri.encodeComponent(username.trim().replaceAll(' ', ''));
     return '$cleanUsername@tastecabinet.internal';
@@ -77,42 +85,24 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submit() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
-
-    if (username.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('닉네임과 비밀번호를 모두 입력해 주세요.')),
-      );
-      return;
-    }
+    if (username.isEmpty || password.isEmpty) return;
 
     setState(() => isLoading = true);
     try {
       final internalEmail = _toInternalEmail(username);
-
       if (isSignUp) {
         final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: internalEmail,
-          password: password,
+          email: internalEmail, password: password,
         );
         await credential.user?.updateDisplayName(username);
       } else {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: internalEmail,
-          password: password,
+          email: internalEmail, password: password,
         );
       }
-    } on FirebaseAuthException catch (e) {
-      String message = '인증에 실패했습니다.';
-      if (e.code == 'wrong-password' || e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        message = '닉네임 또는 비밀번호가 일치하지 않습니다.';
-      } else if (e.code == 'email-already-in-use') {
-        message = '이미 사용 중인 닉네임입니다.';
-      } else if (e.code == 'weak-password') {
-        message = '비밀번호는 6자리 이상이어야 합니다.';
-      }
-
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인/가입 실패')));
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -129,35 +119,22 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.cabinet, size: 64, color: Colors.deepPurple),
+              const Icon(Icons.music_note, size: 64, color: Colors.black87),
               const SizedBox(height: 16),
               Text(
-                isSignUp ? '취향 보관함 계정 만들기' : '취향 보관함 로그인',
+                isSignUp ? '공연 취향 보관함 가입' : '공연 취향 보관함 로그인', 
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isSignUp ? '사용하실 닉네임과 비밀번호만 설정해 주세요.' : '닉네임과 비밀번호로 로그인하세요.',
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
               const SizedBox(height: 32),
               TextField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: '닉네임 (또는 아이디)',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
-                ),
+                controller: _usernameController, 
+                decoration: const InputDecoration(labelText: '닉네임', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: '비밀번호',
-                  prefixIcon: Icon(Icons.lock),
-                  border: OutlineInputBorder(),
-                ),
+                controller: _passwordController, 
+                obscureText: true, 
+                decoration: const InputDecoration(labelText: '비밀번호', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 24),
               isLoading
@@ -165,18 +142,17 @@ class _AuthScreenState extends State<AuthScreen> {
                   : ElevatedButton(
                       onPressed: _submit,
                       style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(50),
-                        backgroundColor: Colors.deepPurple,
+                        minimumSize: const Size.fromHeight(50), 
+                        backgroundColor: Colors.black87, 
                         foregroundColor: Colors.white,
                       ),
-                      child: Text(isSignUp ? '가입하기' : '로그인하기', style: const TextStyle(fontSize: 16)),
+                      child: Text(isSignUp ? '가입하기' : '로그인하기'),
                     ),
-              const SizedBox(height: 12),
               TextButton(
                 onPressed: () => setState(() => isSignUp = !isSignUp),
                 child: Text(
-                  isSignUp ? '이미 계정이 있으신가요? 로그인' : '처음이신가요? 3초 만에 가입하기',
-                  style: const TextStyle(color: Colors.deepPurple),
+                  isSignUp ? '이미 계정이 있으신가요? 로그인' : '처음이신가요? 가입하기', 
+                  style: const TextStyle(color: Colors.black87),
                 ),
               ),
             ],
@@ -187,7 +163,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-/// 🏠 로그인 후 메인 홈 화면 (Gemini AI 탑재)
+/// 🏠 메인 화면: Firestore DB 연동 및 실시간 데이터 바인딩
 class MainAppShell extends StatelessWidget {
   const MainAppShell({super.key});
 
@@ -197,31 +173,118 @@ class MainAppShell extends StatelessWidget {
     final nickname = user?.displayName ?? '멤버';
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        title: const Text('Taste Cabinet'),
+        title: const Text('Live Gig Archive', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout), 
             onPressed: () => FirebaseAuth.instance.signOut(),
-            tooltip: '로그아웃',
           )
         ],
       ),
       body: SingleChildScrollView(
         child: Center(
           child: Container(
-            maxWidth: 600,
-            padding: const EdgeInsets.all(16.0),
+            maxWidth: 650,
+            padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 16),
-                Text('✨ $nickname 님의 취향 보관함', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('자동 로그인 적용 완료! 나만의 취향을 기록하고 AI 분석을 받아보세요.', style: TextStyle(color: Colors.grey)),
+                Text('🔥 $nickname 님이 오늘 발견한 라이브 취향', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 24),
                 
-                // 🤖 Gemini AI 분석기 위젯
-                const AiTasteAnalyzerWidget(),
+                // 📝 1. 취향 기록 폼
+                const GigTasteFormWidget(),
+
+                const SizedBox(height: 40),
+                const Divider(),
+                const SizedBox(height: 16),
+                
+                // 🗂 2. Firestore 실시간 취향 아카이브 리스트
+                const Text('최근 보관된 취향', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                
+                StreamBuilder<QuerySnapshot>(
+                  // 로그인한 사용자의 취향을 작성일시(createdAt) 내림차순으로 조회
+                  stream: FirebaseFirestore.instance
+                      .collection('tastes')
+                      .where('userId', isEqualTo: user?.uid)
+                      .orderBy('createdAt', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text('오류가 발생했습니다: ${snapshot.error}'));
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final docs = snapshot.data?.docs ?? [];
+
+                    if (docs.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Center(
+                          child: Text(
+                            '아직 기록된 공연 취향이 없습니다.\n위 폼을 작성하여 첫 번째 취향을 보관해 보세요!', 
+                            textAlign: TextAlign.center, 
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final item = docs[index].data() as Map<String, dynamic>;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12), 
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(4)),
+                                      child: Text(item['type'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(item['category'] ?? '', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 13)),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text('${item['artist'] ?? ''} 발견', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Text(item['detail'] ?? '', style: const TextStyle(fontSize: 15, height: 1.5, color: Colors.black87)),
+                                const SizedBox(height: 12),
+                                if (item['aiSummary'] != null && (item['aiSummary'] as String).isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                    child: Text('✨ AI 요약: ${item['aiSummary']}', style: TextStyle(fontSize: 14, color: Colors.grey.shade800, fontStyle: FontStyle.italic)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -231,119 +294,227 @@ class MainAppShell extends StatelessWidget {
   }
 }
 
-/// 🤖 Gemini AI 취향 분석기 위젯
-class AiTasteAnalyzerWidget extends StatefulWidget {
-  const AiTasteAnalyzerWidget({super.key});
+/// 🎸 라이브 공연 취향 기록 폼 (Firestore 데이터 저장)
+class GigTasteFormWidget extends StatefulWidget {
+  const GigTasteFormWidget({super.key});
 
   @override
-  State<AiTasteAnalyzerWidget> createState() => _AiTasteAnalyzerWidgetState();
+  State<GigTasteFormWidget> createState() => _GigTasteFormWidgetState();
 }
 
-class _AiTasteAnalyzerWidgetState extends State<AiTasteAnalyzerWidget> {
-  final _memoController = TextEditingController();
-  String _aiResult = '';
-  bool _isLoading = false;
+class _GigTasteFormWidgetState extends State<GigTasteFormWidget> {
+  final _artistController = TextEditingController();
+  final _detailController = TextEditingController();
+  
+  String _selectedGigType = '라이브 펍 소공연';
+  final List<String> _gigTypes = ['라이브 펍 소공연', '단독 공연', '페스티벌'];
+  
+  String _selectedCategory = '🎸 악기/사운드';
+  final List<String> _categories = [
+    '🎤 보컬/음색', '🎸 악기/사운드', '🕺 무대/퍼포먼스', 
+    '🌃 공연장 분위기', '🤝 관객 호응/관람 형태', '👕 머치/팬 문화'
+  ];
 
-  // ⚠️ 2. 여기에 아까 복사하신 Gemini API 키를 붙여넣으세요! (AIzaSy...)
+  String _aiSummary = '';
+  bool _isLoadingAi = false;
+  bool _isSaving = false;
+
   final String _geminiApiKey = "YOUR_GEMINI_API_KEY";
 
-  Future<void> _analyzeTaste() async {
-    final text = _memoController.text.trim();
-    if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('분석할 취향 내용을 적어주세요!')),
-      );
+  @override
+  void dispose() {
+    _artistController.dispose();
+    _detailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generateAiSummary() async {
+    final detail = _detailController.text.trim();
+    final artist = _artistController.text.trim();
+    if (detail.isEmpty || artist.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('아티스트와 발견한 취향 내용을 먼저 적어주세요!')));
+      return;
+    }
+
+    if (_geminiApiKey == "YOUR_GEMINI_API_KEY") {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gemini API 키를 설정해주세요!')));
       return;
     }
 
     setState(() {
-      _isLoading = true;
-      _aiResult = '';
+      _isLoadingAi = true;
+      _aiSummary = '';
     });
 
     try {
-      // Gemini 1.5 Flash 모델 사용
-      final model = GenerativeModel(
-        model: 'gemini-1.5-flash',
-        apiKey: _geminiApiKey,
-      );
-
+      final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: _geminiApiKey);
       final prompt = '''
-너는 취향 아카이빙 전문가이자 감성 에디터야.
-사용자가 입력한 아래 메모나 장소/음악 느낌을 읽고:
+너는 라이브 음악 공연을 전문으로 리뷰하는 감성 에디터야.
+사용자가 오늘 다녀온 '$_selectedGigType'에서 발견한 취향을 읽고 아카이빙 카드로 예쁘게 정리해줘.
 
-1. ✨ [감성 한 줄 요약] (30자 이내의 근사한 문장)
-2. 🏷️ [추천 태그] (태그 3개, 예: #어두운조명 #시각적낭만 #우디향)
-3. 💡 [취향 팁] (이 취향과 어울리는 추천 음료, 시간대, 혹은 음악 분위기 1줄)
+[사용자가 발견한 아티스트/공연명]: $artist
+[선택한 취향 카테고리]: $_selectedCategory
+[구체적 취향 내용]: $detail
 
-위 양식대로 깔끔하고 위트 있게 한국어로 답변해줘.
-
-[사용자 입력 내용]: $text
+위 내용을 바탕으로 딱 2가지만 출력해. (군더더기 인사말 금지)
+1. ✨ 감성 한 줄 요약: (공연의 분위기와 취향이 드러나는 30자 내외의 시적인 문장)
+2. 🏷️ 추천 태그: (아티스트, 악기, 분위기 등을 조합한 해시태그 3개)
 ''';
 
       final response = await model.generateContent([Content.text(prompt)]);
-      
-      setState(() {
-        _aiResult = response.text ?? '분석 결과를 가져올 수 없습니다.';
-      });
+      if (mounted) {
+        setState(() => _aiSummary = response.text?.trim() ?? '분석 실패');
+      }
     } catch (e) {
-      setState(() {
-        _aiResult = 'AI 분석 중 오류가 발생했습니다.\nKey 설정이나 네트워크를 확인해 주세요: $e';
-      });
+      if (mounted) {
+        setState(() => _aiSummary = 'AI 요약 중 오류가 발생했습니다.');
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoadingAi = false);
+      }
+    }
+  }
+
+  /// 💾 Firestore에 취향 데이터 저장
+  Future<void> _saveRecord() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (_artistController.text.isEmpty || _detailController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('필수 내용을 모두 입력해주세요.')));
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('tastes').add({
+        'userId': user.uid,
+        'type': _selectedGigType,
+        'category': _selectedCategory,
+        'artist': _artistController.text.trim(),
+        'detail': _detailController.text.trim(),
+        'aiSummary': _aiSummary,
+        'createdAt': FieldValue.serverTimestamp(), // 서버 시간 등록
+      });
+
+      _artistController.clear();
+      _detailController.clear();
+      setState(() => _aiSummary = '');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Firestore DB에 성공적으로 보관되었습니다! 🎸')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 4,
+      shadowColor: Colors.black12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                Icon(Icons.auto_awesome, color: Colors.deepPurple, size: 28),
-                SizedBox(width: 10),
-                Text('AI 취향 에디터 (Gemini)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ],
+            const Text('어떤 공연이었나요?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _selectedGigType,
+              decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+              items: _gigTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedGigType = val);
+              },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+
+            const Text('오늘 가장 꽂힌 취향 포인트는?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: _categories.map((category) {
+                final isSelected = _selectedCategory == category;
+                return ChoiceChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) setState(() => _selectedCategory = category);
+                  },
+                  selectedColor: const Color(0xFFFF5252),
+                  labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87),
+                  backgroundColor: Colors.grey.shade200,
+                  showCheckmark: false,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+
+            const Text('새롭게 발견한 아티스트(또는 곡명)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
             TextField(
-              controller: _memoController,
+              controller: _artistController,
+              decoration: const InputDecoration(hintText: '예: 실리카겔, 한남동 뮤직펍 FF 베이시스트', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 20),
+
+            const Text('어떤 디테일이 좋았나요? (나만의 관점)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _detailController,
+              maxLines: 4,
               decoration: const InputDecoration(
-                hintText: '좋아하는 공간, 음악, 분위기를 적어보세요...\n예: 비 오는 날 방문한 어두운 원목 LP바. 잔잔한 재즈와 묵직한 위스키 향',
+                hintText: '단순히 "좋았다"보다 구체적으로!\n예: 원래 보컬 위주로 듣는데, 오늘 기타 리프랑 베이스 터지는 사운드에 심장이 뛰는 걸 느낌.',
                 border: OutlineInputBorder(),
               ),
-              maxLines: 3,
             ),
-            const SizedBox(height: 14),
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _analyzeTaste,
-              icon: const Icon(Icons.psychology),
-              label: Text(_isLoading ? 'Gemini가 생각하는 중...' : 'Gemini에게 취향 분석받기'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+            const SizedBox(height: 16),
+
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isLoadingAi ? null : _generateAiSummary,
+                icon: const Icon(Icons.auto_awesome, color: Colors.deepPurple),
+                label: Text(_isLoadingAi ? 'AI가 멋지게 다듬는 중...' : 'Gemini AI로 취향 태그/요약 다듬기', style: const TextStyle(color: Colors.deepPurple)),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.deepPurple)),
               ),
             ),
-            if (_aiResult.isNotEmpty) ...[
-              const SizedBox(height: 16),
+            if (_aiSummary.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.deepPurple.shade100),
-                ),
-                child: Text(_aiResult, style: const TextStyle(fontSize: 15, height: 1.6)),
+                decoration: BoxDecoration(color: Colors.deepPurple.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Text(_aiSummary, style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.black87)),
               ),
-            ]
+            ],
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _saveRecord,
+                icon: _isSaving 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                    : const Icon(Icons.save),
+                label: Text(_isSaving ? '저장하는 중...' : '내 취향 보관함에 아카이빙', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2C2C2C), 
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            )
           ],
         ),
       ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 Firestore 패키지 추가
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 void main() async {
@@ -114,7 +114,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       body: Center(
         child: Container(
-          maxWidth: 380,
+          constraints: const BoxConstraints(maxWidth: 380), // 👈 수정 완료
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -187,7 +187,7 @@ class MainAppShell extends StatelessWidget {
       body: SingleChildScrollView(
         child: Center(
           child: Container(
-            maxWidth: 650,
+            constraints: const BoxConstraints(maxWidth: 650), // 👈 수정 완료
             padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,7 +207,6 @@ class MainAppShell extends StatelessWidget {
                 const SizedBox(height: 16),
                 
                 StreamBuilder<QuerySnapshot>(
-                  // 로그인한 사용자의 취향을 작성일시(createdAt) 내림차순으로 조회
                   stream: FirebaseFirestore.instance
                       .collection('tastes')
                       .where('userId', isEqualTo: user?.uid)
@@ -376,7 +375,6 @@ class _GigTasteFormWidgetState extends State<GigTasteFormWidget> {
     }
   }
 
-  /// 💾 Firestore에 취향 데이터 저장
   Future<void> _saveRecord() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -396,7 +394,7 @@ class _GigTasteFormWidgetState extends State<GigTasteFormWidget> {
         'artist': _artistController.text.trim(),
         'detail': _detailController.text.trim(),
         'aiSummary': _aiSummary,
-        'createdAt': FieldValue.serverTimestamp(), // 서버 시간 등록
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       _artistController.clear();
